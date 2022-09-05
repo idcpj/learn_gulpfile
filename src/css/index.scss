@@ -1,0 +1,13 @@
+.main{
+  height: 100px;
+  width: 100px;
+  background-color: aqua;
+  .item{
+    height: 50px;
+    width: 50px;
+    background-color: #000;
+      input::placeholder{
+        width: 100px;
+      }
+    }
+}
