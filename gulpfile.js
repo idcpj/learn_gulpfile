@@ -1,4 +1,4 @@
-const { src, dest, series, watch,task } = require('gulp');
+const { src, dest, series, watch,task,parallel } = require('gulp');
 
 const connect = require('gulp-connect');
 
@@ -8,7 +8,8 @@ const rev = require('gulp-rev'); //对文件名加MD5后缀
 const revCollector = require('gulp-rev-collector'); //路径替换
 const clean = require('gulp-clean');
 const fileinclude = require('gulp-file-include');//  使用@@include 的方式引入 文件
-var preprocess = require("gulp-preprocess");
+const preprocess = require("gulp-preprocess");
+const gulpif  = require('gulp-if');
 
 
 // js
@@ -31,6 +32,9 @@ const imagemin = require('gulp-imagemin');
 const entry = "src/" //要处理的源码文件夹
 const dist = 'dist/'; //被处理后的文件保存的目录
 
+
+const NODE_EVN=true;
+
 //清除文件夹里之前的内容
 function cleanBefore() {
     return src(dist, { read: false,allowEmpty: true })
@@ -48,13 +52,14 @@ function handleHtml() {
         minifyCSS: true //压缩页面CSS
     };
     return src(entry + '**/*.html')
-        // .pipe(htmlmin(options))
+        .pipe(gulpif(NODE_EVN,htmlmin(options)))
         .pipe(preprocess({context:{NODE_ENV:"production",DEFINE1:"select_1"}})) // 相当于 C/C++ 中的宏定义
         .pipe(fileinclude({
             prefix: '@@',
             basepath: '@file'
         }))
-        .pipe(dest(dist));
+        .pipe(dest(dist))
+        .pipe(connect.reload()); //自动刷新浏览器
 }
 
 
@@ -63,11 +68,12 @@ function handleCss() {
     return src(entry + 'css/*.scss')
         .pipe(sass())
         .pipe(autoprefixer({cascade: false}))
-        // .pipe(minifyCSS()) //压缩css
-        .pipe(rev()) //文件名加MD5后缀
+        .pipe(gulpif(NODE_EVN,minifyCSS())) //压缩css
+        .pipe(gulpif(NODE_EVN,rev())) //文件名加MD5后缀
         .pipe(dest(dist+'css/')) //输出到css目录
-        .pipe(rev.manifest('rev-css-manifest.json')) ////生成一个rev-css-manifest.json
-        .pipe(dest('rev')); //将 rev-css-manifest.json 保存到 rev 目录内
+        .pipe(gulpif(NODE_EVN,rev.manifest('rev-css-manifest.json'))) ////生成一个rev-css-manifest.json
+        .pipe(gulpif(NODE_EVN,dest('rev'))) //将 rev-css-manifest.json 保存到 rev 目录内
+        .pipe(connect.reload());
 }
 
 //js压缩,将源码文件夹src内的js文件夹下的所有js文件压缩混淆，并生成文件名带hash随机值的新文件保存在dist的js目录下
@@ -77,24 +83,25 @@ function handleJs() {
         .pipe(babel({
             presets: ['@babel/preset-env']
         }))
-        // .pipe(uglify({
-        //     compress: {
-        //         // drop_console: argv.env != 'development'?true:false,  // 过滤 console
-        //         // drop_debugger: argv.env != 'development'?true:false // 过滤 debugger
-        //         drop_console:false,  // 过滤 console
-        //         drop_debugger:true // 过滤 debugger
-        //     }
-        // }) //压缩js到一行
-        .pipe(rev()) //文件名加MD5后缀
+        .pipe(gulpif(NODE_EVN,uglify({
+            compress: {
+                // drop_console: argv.env != 'development'?true:false,  // 过滤 console
+                // drop_debugger: argv.env != 'development'?true:false // 过滤 debugger
+                drop_console:false,  // 过滤 console
+                drop_debugger:true // 过滤 debugger
+            }
+        }))) //压缩js到一行
+        .pipe(gulpif(NODE_EVN,rev())) //文件名加MD5后缀
         .pipe(dest(dist+'js/')) //输出到js目录
-        .pipe(rev.manifest()) ////生成一个rev-js-manifest.json
-        .pipe(dest('rev')); //将 rev-js-manifest.json 保存到 rev 目录内
+        .pipe(gulpif(NODE_EVN,rev.manifest())) ////生成一个rev-js-manifest.json
+        .pipe(gulpif(NODE_EVN,dest('rev'))) //将 rev-js-manifest.json 保存到 rev 目录内
+        .pipe(connect.reload());
 }
 
 //打包图片
 function handleImgs() {
     return src(entry + 'img/**/*')
-        .pipe(rev())
+        .pipe(gulpif(NODE_EVN,rev()))
         // .pipe(imagemin([
         //     imagemin.gifsicle({interlaced: true}),
         //     imagemin.mozjpeg({quality: 75, progressive: true}),
@@ -107,8 +114,9 @@ function handleImgs() {
         //     })
         // ]))
         .pipe(dest(dist + 'img/'))
-        .pipe(rev.manifest('rev-img-manifest.json')) //生成一个rev-img-manifest.json
-        .pipe(dest('rev')); //将 rev-img-manifest.json 保存到 rev 目录内;
+        .pipe(gulpif(NODE_EVN,rev.manifest('rev-img-manifest.json'))) //生成一个rev-img-manifest.json
+        .pipe(gulpif(NODE_EVN,dest('rev'))) //将 rev-img-manifest.json 保存到 rev 目录内;
+        .pipe(connect.reload());
 }
 
 
@@ -116,26 +124,33 @@ function handleImgs() {
 function srcReplace() {
     //html，针对js,css,img
     return src(['rev/*.json', dist+'*.html'])
-        .pipe(revCollector({replaceReved:true }))
+        .pipe(gulpif(NODE_EVN,revCollector({replaceReved:true })))
         .pipe(dest(dist));
 }
 
-
-task("change",()=>{
-
+function server() {
     connect.server({
         root: 'dist',
         host: '127.0.0.1',
         livereload: true,
         port: 8888,
     });
+}
+
+function watcher() {
     const watcher = watch([ "src/**/*"]);
     watcher.on(
         "change",
         series(cleanBefore,handleCss, handleHtml, handleJs, handleImgs,srcReplace)
 
     )
-})
+}
 
 
-exports.default =     series(cleanBefore,handleCss, handleHtml, handleJs, handleImgs,srcReplace); //组合任务
+task("change",parallel(
+    series(cleanBefore,handleCss, handleHtml, handleJs, handleImgs,srcReplace),
+    watcher,
+    server)
+)
+
+exports.default = series(cleanBefore,handleCss, handleHtml, handleJs, handleImgs,srcReplace); //组合任务
