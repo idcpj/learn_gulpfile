@@ -15,6 +15,7 @@ const gulpif  = require('gulp-if');
 // js
 const uglify = require('gulp-uglify');
 const babel=require("gulp-babel");
+const ts = require('gulp-typescript');
 
 // html
 const htmlmin = require('gulp-htmlmin');
@@ -88,7 +89,7 @@ function handleJs() {
                 // drop_console: argv.env != 'development'?true:false,  // 过滤 console
                 // drop_debugger: argv.env != 'development'?true:false // 过滤 debugger
                 drop_console:false,  // 过滤 console
-                drop_debugger:true // 过滤 debugger
+                drop_debugger:NODE_EVN // 过滤 debugger
             }
         }))) //压缩js到一行
         .pipe(gulpif(NODE_EVN,rev())) //文件名加MD5后缀
@@ -146,6 +147,13 @@ function watcher() {
     )
 }
 
+task("ts",()=>{
+    const tsProject = ts.createProject(entry+'tsconfig.json', { noImplicitAny: true });
+
+    return src(entry+'/**/*.ts')
+        .pipe(tsProject())
+        .pipe(dest(dist));
+})
 
 task("change",parallel(
     series(cleanBefore,handleCss, handleHtml, handleJs, handleImgs,srcReplace),
